@@ -65,6 +65,8 @@ class MainWindow(QMainWindow):
         self.order_page = OrderPage()
         self.service_page = ServicePage()
 
+        self.order_page.inventory_changed.connect(self.inventory_page.load_data)
+
         self.content_stack.addWidget(self.inventory_page)  # index 0
         self.content_stack.addWidget(self.order_page)       # index 1
         self.content_stack.addWidget(self.service_page)     # index 2

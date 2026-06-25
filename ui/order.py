@@ -227,6 +227,8 @@ class NewOrderDialog(BaseDialog):
 
 
 class OrderPage(QWidget):
+    inventory_changed = Signal()
+
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setup_ui()
@@ -379,6 +381,7 @@ class OrderPage(QWidget):
             session.commit()
             session.close()
             self.load_data()
+            self.inventory_changed.emit()
 
     def edit_order(self):
         row = self.table.currentRow()
@@ -454,6 +457,7 @@ class OrderPage(QWidget):
             session.commit()
             session.close()
             self.load_data()
+            self.inventory_changed.emit()
         else:
             session.close()
 
@@ -550,6 +554,8 @@ class OrderPage(QWidget):
         session.close()
         dialog.accept()
         self.load_data()
+        if new_status == "Cancelled":
+            self.inventory_changed.emit()
 
     def show_context_menu(self, pos):
         row = self.table.currentRow()
