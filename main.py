@@ -27,22 +27,30 @@ def main():
         QMainWindow {
             background-color: #f5f6fa;
         }
-        QLabel {
-            color: #2c3e50;
+        QDialog, QMessageBox {
+            background-color: #ffffff;
+            color: #000000;
+        }
+        QDialog QLabel, QMessageBox QLabel, QLabel {
+            color: #000000;
+            background-color: transparent;
+            font-size: 13px;
+            font-weight: normal;
         }
         QGroupBox {
             font-weight: bold;
-            color: #2c3e50;
-            border: 1px solid #bdc3c7;
-            border-radius: 5px;
+            color: #000000;
+            border: 2px solid #999999;
+            border-radius: 6px;
             margin-top: 10px;
             padding-top: 15px;
+            background-color: #ffffff;
         }
         QGroupBox::title {
             subcontrol-origin: margin;
             left: 10px;
-            padding: 0 5px;
-            color: #2c3e50;
+            padding: 0 6px;
+            color: #000000;
         }
         QPushButton {
             padding: 6px 14px;
@@ -60,10 +68,12 @@ def main():
         }
         QLineEdit, QComboBox, QSpinBox, QDoubleSpinBox {
             padding: 4px 8px;
-            border: 1px solid #bdc3c7;
+            border: 1px solid #666666;
             border-radius: 3px;
             background-color: #ffffff;
-            color: #2c3e50;
+            color: #000000;
+            selection-background-color: #3498db;
+            selection-color: #ffffff;
         }
         QComboBox::drop-down {
             border: none;
@@ -95,10 +105,28 @@ def main():
             color: #ffffff;
         }
         QTextEdit {
-            border: 1px solid #bdc3c7;
+            border: 1px solid #666666;
             border-radius: 3px;
             background-color: #ffffff;
-            color: #2c3e50;
+            color: #000000;
+            selection-background-color: #3498db;
+            selection-color: #ffffff;
+        }
+        QComboBox QAbstractItemView {
+            background-color: #ffffff;
+            color: #000000;
+            selection-background-color: #3498db;
+            selection-color: #ffffff;
+        }
+        QDialog QPushButton, QMessageBox QPushButton {
+            background-color: #005a9e;
+            color: #ffffff;
+            border: 1px solid #003f73;
+            font-weight: bold;
+            min-width: 80px;
+        }
+        QDialog QPushButton:hover, QMessageBox QPushButton:hover {
+            background-color: #004578;
         }
     """)
 
