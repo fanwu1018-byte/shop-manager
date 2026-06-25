@@ -7,6 +7,7 @@ from PySide6.QtWidgets import (
 )
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QAction, QColor, QBrush, QFont
+from sqlalchemy.orm import selectinload
 from database.db import get_session
 from database.models import Ticket, TicketLog, Order
 from ui.widgets import TableWidget, BaseDialog
@@ -148,8 +149,7 @@ class ServicePage(QWidget):
         if priority and priority != "All Priority":
             query = query.filter(Ticket.priority == priority)
 
-        tickets = query.order_by(Ticket.id.desc()).all()
-        session.close()
+        tickets = query.options(selectinload(Ticket.order)).order_by(Ticket.id.desc()).all()
 
         self.table.setRowCount(0)
         open_count = 0
@@ -186,6 +186,7 @@ class ServicePage(QWidget):
         self.summary_label.setText(
             f"Total: {len(tickets)} tickets | Open/In Progress: {open_count}"
         )
+        session.close()
 
     def new_ticket(self):
         dialog = TicketDialog("New Ticket", parent=self)
@@ -295,6 +296,7 @@ class ServicePage(QWidget):
             status_layout.addWidget(reopen_btn)
         detail_dialog.layout.addLayout(status_layout)
 
+        detail_dialog.add_buttons()
         detail_dialog.save_btn.setText("Close")
         detail_dialog.save_btn.clicked.disconnect()
         detail_dialog.save_btn.clicked.connect(detail_dialog.accept)

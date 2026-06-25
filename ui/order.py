@@ -7,6 +7,7 @@ from PySide6.QtWidgets import (
 )
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QAction, QColor, QBrush, QFont
+from sqlalchemy.orm import selectinload
 from database.db import get_session
 from database.models import Order, OrderItem, Product
 from ui.widgets import TableWidget, BaseDialog
@@ -17,10 +18,10 @@ class OrderItemRow(QWidget):
     """A single row in the order items list within the new order dialog."""
     removed = Signal()
 
-    def __init__(self, product: Product, parent=None):
+    def __init__(self, product: Product, quantity: int = 1, parent=None):
         super().__init__(parent)
         self.product = product
-        self.quantity = 1
+        self.quantity = quantity
         layout = QHBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
 
@@ -28,8 +29,9 @@ class OrderItemRow(QWidget):
         self.price_label = QLabel(f"${product.price:.2f}")
         self.qty_spin = QSpinBox()
         self.qty_spin.setRange(1, 9999)
+        self.qty_spin.setValue(quantity)
         self.qty_spin.valueChanged.connect(self.update_subtotal)
-        self.subtotal_label = QLabel(f"${product.price:.2f}")
+        self.subtotal_label = QLabel(f"${product.price * quantity:.2f}")
         self.remove_btn = QPushButton("\u2715")
         self.remove_btn.setFixedWidth(30)
         self.remove_btn.clicked.connect(self.removed.emit)
@@ -50,10 +52,11 @@ class OrderItemRow(QWidget):
 
 
 class NewOrderDialog(BaseDialog):
-    def __init__(self, parent=None):
-        super().__init__("New Order", parent)
+    def __init__(self, parent=None, order: Order = None):
+        super().__init__("Edit Order" if order else "New Order", parent)
         self.setMinimumWidth(700)
         self.setMinimumHeight(500)
+        self.order = order
         self.item_rows = []
 
         # Customer info
@@ -95,6 +98,30 @@ class NewOrderDialog(BaseDialog):
 
         self.add_buttons()
         self.load_products()
+        if order:
+            self._load_order(order)
+
+    def _load_order(self, order: Order):
+        self.customer_name_edit.setText(order.customer_name)
+        self.customer_contact_edit.setText(order.customer_contact or "")
+        self.note_edit.setPlainText(order.note or "")
+        for item in order.items:
+            if item.product:
+                product = item.product
+            else:
+                product = Product(
+                    id=item.product_id,
+                    sku="",
+                    name=item.product_name,
+                    price=item.price,
+                    stock=0,
+                    min_stock=0,
+                )
+            row = OrderItemRow(product, quantity=item.quantity)
+            row.removed.connect(lambda r=row: self.remove_product_row(r))
+            self.item_rows.append(row)
+            self.items_container.addWidget(row)
+        self.update_total()
 
     def load_products(self, search=""):
         session = get_session()
@@ -175,6 +202,29 @@ class NewOrderDialog(BaseDialog):
         session.close()
         return True
 
+    def validate_with_available_stock(self, available_by_product_id: dict) -> bool:
+        data = self.get_data()
+        if not data["customer_name"]:
+            QMessageBox.warning(self, "Validation Error", "Customer name is required.")
+            return False
+        if not data["items"]:
+            QMessageBox.warning(self, "Validation Error", "At least one product is required.")
+            return False
+        requested = {}
+        for item in data["items"]:
+            product_id = item["product"].id
+            requested[product_id] = requested.get(product_id, 0) + item["quantity"]
+        for product_id, quantity in requested.items():
+            available = available_by_product_id.get(product_id, 0)
+            if quantity > available:
+                QMessageBox.warning(
+                    self,
+                    "Insufficient Stock",
+                    f"Product ID {product_id} has {available} available after restoring the old order, but {quantity} requested."
+                )
+                return False
+        return True
+
 
 class OrderPage(QWidget):
     def __init__(self, parent=None):
@@ -252,8 +302,7 @@ class OrderPage(QWidget):
             start = datetime(now.year, now.month, 1)
             query = query.filter(Order.created_at >= start)
 
-        orders = query.order_by(Order.id.desc()).all()
-        session.close()
+        orders = query.options(selectinload(Order.items)).order_by(Order.id.desc()).all()
 
         self.table.setRowCount(0)
         total_revenue = 0
@@ -284,6 +333,7 @@ class OrderPage(QWidget):
         self.summary_label.setText(
             f"Total: {len(orders)} orders | Revenue: ${total_revenue:.2f}"
         )
+        session.close()
 
     def new_order(self):
         dialog = NewOrderDialog(self)
@@ -330,6 +380,83 @@ class OrderPage(QWidget):
             session.close()
             self.load_data()
 
+    def edit_order(self):
+        row = self.table.currentRow()
+        if row < 0:
+            return
+        order_id = int(self.table.item(row, 0).text())
+        session = get_session()
+        order = session.query(Order).options(
+            selectinload(Order.items).selectinload(OrderItem.product)
+        ).get(order_id)
+        if not order:
+            session.close()
+            return
+        if order.status == "Completed":
+            reply = QMessageBox.question(
+                self,
+                "Edit Completed Order",
+                "This order is completed. Editing it will update item details and inventory. Continue?",
+                QMessageBox.Yes | QMessageBox.No,
+            )
+            if reply != QMessageBox.Yes:
+                session.close()
+                return
+
+        dialog = NewOrderDialog(self, order=order)
+        if dialog.exec() == QDialog.Accepted:
+            # Restore stock from the old order first if this order currently reserves/deducts stock.
+            stock_was_deducted = order.status != "Cancelled"
+            if stock_was_deducted:
+                for old_item in order.items:
+                    product = session.query(Product).get(old_item.product_id)
+                    if product:
+                        product.stock += old_item.quantity
+                session.flush()
+
+            data = dialog.get_data()
+            available_by_product_id = {
+                p.id: p.stock
+                for p in session.query(Product).filter(
+                    Product.id.in_([item["product"].id for item in data["items"]])
+                ).all()
+            }
+            if not dialog.validate_with_available_stock(available_by_product_id):
+                session.rollback()
+                session.close()
+                return
+
+            order.customer_name = data["customer_name"]
+            order.customer_contact = data["customer_contact"]
+            order.note = data["note"]
+            order.updated_at = datetime.now()
+            order.items.clear()
+            session.flush()
+
+            total = 0
+            for item in data["items"]:
+                product = session.query(Product).get(item["product"].id)
+                subtotal = product.price * item["quantity"]
+                order_item = OrderItem(
+                    order_id=order.id,
+                    product_id=product.id,
+                    product_name=product.name,
+                    price=product.price,
+                    quantity=item["quantity"],
+                    subtotal=subtotal,
+                )
+                order.items.append(order_item)
+                if stock_was_deducted:
+                    product.stock -= item["quantity"]
+                total += subtotal
+
+            order.total_amount = total
+            session.commit()
+            session.close()
+            self.load_data()
+        else:
+            session.close()
+
     def show_order_detail(self):
         row = self.table.currentRow()
         if row < 0:
@@ -371,6 +498,9 @@ class OrderPage(QWidget):
         # Status change buttons
         status_layout = QHBoxLayout()
         status_layout.addStretch()
+        edit_btn = QPushButton("✏️ Edit Order")
+        edit_btn.clicked.connect(lambda: (detail_dialog.accept(), self.edit_order()))
+        status_layout.addWidget(edit_btn)
         if order.status == "Pending":
             ship_btn = QPushButton("\U0001f69a Mark Shipped")
             ship_btn.clicked.connect(lambda: self.change_status(order.id, "Shipped", detail_dialog))
@@ -384,6 +514,7 @@ class OrderPage(QWidget):
             status_layout.addWidget(complete_btn)
         detail_dialog.layout.addLayout(status_layout)
 
+        detail_dialog.add_buttons()
         detail_dialog.save_btn.setText("Close")
         detail_dialog.save_btn.clicked.disconnect()
         detail_dialog.save_btn.clicked.connect(detail_dialog.accept)
@@ -426,10 +557,13 @@ class OrderPage(QWidget):
             return
         menu = QMenu()
         detail_action = menu.addAction("\U0001f441\ufe0f View Detail")
+        edit_action = menu.addAction("✏️ Edit Order")
         print_action = menu.addAction("\U0001f5a8\ufe0f Print")
         action = menu.exec(self.table.mapToGlobal(pos))
         if action == detail_action:
             self.show_order_detail()
+        elif action == edit_action:
+            self.edit_order()
         elif action == print_action:
             self.print_order()
 
@@ -475,8 +609,7 @@ class OrderPage(QWidget):
         if not file_path:
             return
         session = get_session()
-        orders = session.query(Order).order_by(Order.id.desc()).all()
-        session.close()
+        orders = session.query(Order).options(selectinload(Order.items)).order_by(Order.id.desc()).all()
         data = []
         for o in orders:
             data.append({
@@ -485,6 +618,7 @@ class OrderPage(QWidget):
                 "status": o.status, "date": o.created_at.strftime("%Y-%m-%d %H:%M"),
                 "items": len(o.items), "note": o.note or ""
             })
+        session.close()
         df = pd.DataFrame(data)
         try:
             if file_path.endswith(".csv"):
