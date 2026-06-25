@@ -1,6 +1,7 @@
 from PySide6.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
-    QTableWidget, QTableWidgetItem, QHeaderView, QMessageBox
+    QTableWidget, QTableWidgetItem, QHeaderView, QMessageBox,
+    QLayout, QWidget
 )
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QFont
@@ -15,8 +16,13 @@ class BaseDialog(QDialog):
         self.setMinimumWidth(500)
         self.layout = QVBoxLayout(self)
 
-    def add_widget(self, widget):
-        self.layout.addWidget(widget)
+    def add_widget(self, item):
+        if isinstance(item, QWidget):
+            self.layout.addWidget(item)
+        elif isinstance(item, QLayout):
+            self.layout.addLayout(item)
+        else:
+            raise TypeError(f"Expected QWidget or QLayout, got {type(item)}")
 
     def add_buttons(self):
         btn_layout = QHBoxLayout()
