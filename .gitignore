@@ -1,0 +1,13 @@
+# Database - local runtime data, regenerated on first run
+data/shop.db
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+
+# IDE
+.vscode/
+.idea/

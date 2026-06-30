@@ -80,8 +80,8 @@ shop-manager/
 ├── main.py                  # Application entry point and global styling
 ├── requirements.txt         # Python dependencies
 ├── README.md                # Project documentation
-├── data/
-│   └── shop.db              # Local SQLite database, auto-created at runtime
+├── .gitignore               # Ignores data/shop.db, __pycache__, .venv, etc.
+├── data/                    # SQLite database (auto-created; gitignored)
 ├── database/
 │   ├── __init__.py
 │   ├── db.py                # Database initialization and session factory
@@ -145,9 +145,11 @@ The application stores data locally in:
 data/shop.db
 ```
 
-The database is created automatically when the app starts.
+The database is created **automatically** the first time you run the app — no manual setup needed.
 
-Because this is a local SQLite database, back up `data/shop.db` if you want to preserve shop data before deleting or moving the project.
+After a fresh clone, `data/shop.db` does not exist yet. Simply run `python main.py` and the app will create it.
+
+**Note:** `data/shop.db` is listed in `.gitignore` so it is never committed to the repository. Each machine keeps its own data. Back up this file if you need to preserve shop data before deleting or moving the project.
 
 ---
 
@@ -229,14 +231,13 @@ python main.py
 
 ## Git Notes
 
-`data/shop.db` contains local runtime data. If you do not want to commit local test data, avoid staging it:
+`data/shop.db` is already listed in `.gitignore` — it will never be accidentally committed.
+
+After cloning the repo on a new machine, just run:
 
 ```bash
-git restore --staged data/shop.db
+pip install -r requirements.txt
+python main.py
 ```
 
-Or discard local database changes if appropriate:
-
-```bash
-git restore data/shop.db
-```
+The app will create a fresh `data/shop.db` on its first launch.
